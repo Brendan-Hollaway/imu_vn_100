@@ -30,4 +30,5 @@ int main(int argc, char** argv) {
   } catch (const std::exception& e) {
     ROS_INFO("%s: %s", pnh.getNamespace().c_str(), e.what());
   }
+
 }

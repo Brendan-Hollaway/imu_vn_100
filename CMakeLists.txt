@@ -7,8 +7,22 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
   diagnostic_updater
+  message_generation
 )
 find_package(Boost REQUIRED)
+
+## Generate messages in the 'msg' folder
+add_message_files(
+  FILES
+  Imu_arduino.msg
+)
+
+## Generate added messages and services with any dependencies listed here
+generate_messages(
+  DEPENDENCIES
+  sensor_msgs
+  std_msgs
+)
 
 catkin_package(
   INCLUDE_DIRS include vncpplib/include

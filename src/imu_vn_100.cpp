@@ -14,9 +14,28 @@
  * limitations under the License.
  */
 
+#define MICROSEC_PER_SEC (1000 * 1000)
+
 #include <imu_vn_100/imu_vn_100.h>
 
 #include <geometry_msgs/Vector3Stamped.h>
+#include <cassert>
+#include <std_msgs/UInt64.h>
+#include <imu_vn_100/Imu_arduino.h>
+#include <queue>
+
+// unsigned long prevLastTimestamp(0);
+// unsigned long lastTimestamp(0);
+std::queue<unsigned long> timestamps;
+ros::Subscriber timestampSubscriber;
+
+void timestampCallback(const std_msgs::UInt64::ConstPtr& msg) {
+    // std::cout << "timestamp: " << msg->data << std::endl;
+    // prevLastTimestamp = lastTimestamp;
+    // lastTimestamp = msg->data; // ros::Time(((double) msg->data) / MICROSEC_PER_SEC);
+    timestamps.push(msg->data);
+}
+
 
 namespace imu_vn_100 {
 
@@ -154,7 +173,7 @@ void ImuVn100::LoadParameters() {
 
 void ImuVn100::CreateDiagnosedPublishers() {
   imu_rate_double_ = imu_rate_;
-  pd_imu_.Create<Imu>(pnh_, "imu", updater_, imu_rate_double_);
+  pd_imu_.Create<Imu_arduino>(pnh_, "imu", updater_, imu_rate_double_);
   if (enable_mag_) {
     pd_mag_.Create<MagneticField>(pnh_, "magnetic_field", updater_,
                                   imu_rate_double_);
@@ -170,6 +189,8 @@ void ImuVn100::CreateDiagnosedPublishers() {
   if (enable_rpy_) {
       pd_rpy_.Create<Vector3Stamped>(pnh_, "rpy", updater_, imu_rate_double_);
   }
+  timestampSubscriber =
+      pnh_.subscribe("/imu_timestamps", 1, timestampCallback);
 }
 
 void ImuVn100::Initialize() {
@@ -220,7 +241,10 @@ void ImuVn100::Initialize() {
   if (sync_info_.SyncEnabled()) {
     ROS_INFO("Set Synchronization Control Register (id:32).");
     VnEnsure(vn100_setSynchronizationControl(
-        &imu_, SYNCINMODE_COUNT, SYNCINEDGE_RISING, 0, SYNCOUTMODE_IMU_START,
+        &imu_, 
+        // SYNCINMODE_COUNT
+        SYNCINMODE_IMU
+        ,SYNCINEDGE_RISING, 0, SYNCOUTMODE_IMU_START,
         SYNCOUTPOLARITY_POSITIVE, sync_info_.skip_count,
         sync_info_.pulse_width_us * 1000, true));
 
@@ -438,9 +462,20 @@ void ImuVn100::Disconnect() {
 }
 
 void ImuVn100::PublishData(const VnDeviceCompositeData& data) {
-  sensor_msgs::Imu imu_msg;
+  // assert(prevLastTimeStamp == 0 ||
+  //        lastTimeStamp != prevLastTimeStamp);
+  if (timestamps.size() == 0) {
+      std::cout << "WARNING: EMPTY TIMESTAMP QUEUE" << std::endl;
+      return;
+  }
+  if (timestamps.size() >= 5) {
+      std::cout << "WARNING: Timestamp Queue too large: " << timestamps.size() << std::endl;
+  }
+  Imu_arduino imu_msg;
   imu_msg.header.stamp = ros::Time::now();
   imu_msg.header.frame_id = frame_id_;
+  imu_msg.arduino_timestamp = timestamps.front();
+  timestamps.pop();
 
   if (imu_compensated_) {
     RosVector3FromVnVector3(imu_msg.linear_acceleration, data.acceleration);
